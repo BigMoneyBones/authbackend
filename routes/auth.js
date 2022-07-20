@@ -4,6 +4,10 @@ const bcrypt = require("bcryptjs");
 const { uuid } = require("uuidv4");
 const { blogsDB } = require("../mongo");
 
+const dotenv = require("dotenv");
+const jwt = require("jsonwebtoken");
+dotenv.config();
+
 const createUser = async (username, passwordHash) => {
   const collection = await blogsDB().collection("users");
 
@@ -43,10 +47,39 @@ router.post("/login-user", async (req, res, next) => {
     const user = await collection.findOne({
       username: req.body.username,
     });
+
     const match = await bcrypt.compare(req.body.password, user.password);
-    res.json({ success: match }).status(200);
+
+    const jwtSecretKey = process.env.JWT_SECRET_KEY;
+    const data = {
+      time: new Date(),
+      userId: user.uid, // Note: Double check this line of code to be sure that user.uid is coming from your fetched mongo user
+    };
+    const token = jwt.sign(data, jwtSecretKey);
+
+    res.json({ success: true, token }).status(200);
   } catch (e) {
     res.json({ success: false }).status(500);
+  }
+});
+
+router.get("/validate-token", async (req, res, next) => {
+  const tokenHeaderKey = process.env.TOKEN_HEADER_KEY;
+  const jwtSecretKey = process.env.JWT_SECRET_KEY;
+
+  try {
+    const token = req.header(tokenHeaderKey);
+
+    const verified = jwt.verify(token, jwtSecretKey);
+    if (verified) {
+      return res.json({ success: true });
+    } else {
+      // Access Denied
+      throw Error("Access Denied");
+    }
+  } catch (error) {
+    // Access Denied
+    return res.status(401).json({ success: true, message: String(error) });
   }
 });
 
